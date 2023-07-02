@@ -1,0 +1,58 @@
+---
+title: "Lab 5: Comparing Ridge, Lasso, and OLS"
+author: "Insert your name here"
+date: "Insert date here"
+format: pdf
+---
+
+# Packages
+
+```{r load-packages}
+# load packages here
+```
+
+# Data  
+
+```{r load-data}
+# load data here
+```
+
+
+# Data Wrangling
+
+## Q1 
+
+```{r chunk-name-here}
+# code here
+```
+
+# Comparing Predictive Performance
+
+## Q2
+
+## Q3
+
+```{r predict-method}
+predict.regsubsets <- function(object, newdata, id, ...) {
+  
+   if(is.symbol(object$call[[2]])){
+     i <- 2
+     evals_form <- function(x){
+       !rlang::is_formula(eval(x), scoped = TRUE)
+     }
+     pos_evals_form <- possibly(evals_form, otherwise = FALSE)
+     while(pos_evals_form(object$call[[i]])){
+      i <- i + 1 
+     }
+     tt <- eval(object$call[[i]])
+   } else {
+     tt <- as.formula(object$call[[2]])
+   }
+   mat <- model.matrix(tt, newdata)
+   coefj <- coef(object, id = id)
+   xvars <- names(coefj)
+   mat[, xvars] %*% coefj
+}
+```
+
+# Comparing Variable Selection Approaches
