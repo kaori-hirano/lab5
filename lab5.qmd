@@ -1,7 +1,7 @@
 ---
 title: "Lab 5: Comparing Ridge, Lasso, and OLS"
-author: "Insert your name here"
-date: "Insert date here"
+author: "Kaori Hirano"
+date: "06/07/2023"
 format: pdf
 ---
 
@@ -9,6 +9,13 @@ format: pdf
 
 ```{r load-packages}
 # load packages here
+library(ISLR2)
+library(leaps) # for best subset selection
+library(glmnet) # for ridge, LASSO, and elastic net
+suppressPackageStartupMessages(library(tidyverse))
+suppressPackageStartupMessages(library(readr))
+library(patchwork) # for plot arrangement
+suppressPackageStartupMessages(library(pls)) # for principal component regression and partial least squares
 ```
 
 # Data  
