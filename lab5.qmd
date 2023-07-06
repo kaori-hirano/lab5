@@ -21,7 +21,8 @@ suppressPackageStartupMessages(library(pls)) # for principal component regressio
 # Data  
 
 ```{r load-data}
-# load data here
+mls22 <- read_csv("data/mls22.csv", show_col_types = FALSE)
+d <- dfull |> drop_na()
 ```
 
 
@@ -30,12 +31,37 @@ suppressPackageStartupMessages(library(pls)) # for principal component regressio
 ## Q1 
 
 ```{r chunk-name-here}
-# code here
+d <- d |>mutate(Nation, usa = if_else(Nation == "USA", 1, 0)) # 0 for non us, 1 for us
+
+# 1 for gk, else 0
+gkval <- grepl("GK", d$Pos, fixed = TRUE)
+d <- d |> mutate(Pos, gk = if_else(gkval == TRUE, 1, 0))
+
+# 1 for df, else 0
+dfval <- grepl("DF", d$Pos, fixed = TRUE)
+d <- d |> mutate(Pos, df = if_else(dfval == TRUE, 1, 0))
+# head(d) works!
+
+# 1 if mf, 0 if not 
+mfval <- grepl("MF", d$Pos, fixed = TRUE)
+d <- d |> mutate(Pos, mf = if_else(mfval == TRUE, 1, 0)) 
+
+# 1 for FW and 0 for no
+fwval <- grepl("FW", d$Pos, fixed = TRUE)
+d <- d |> mutate(Pos, fw = if_else(fwval == TRUE, 1, 0))
+
+d$logs <- log(d$base_salary)
 ```
 
 # Comparing Predictive Performance
 
 ## Q2
+```{r q2}
+set.seed(16)
+dim(d)
+mls_cv <- sample(727, (727*.7))
+mls_test <- sample(727, (727*.3))
+```
 
 ## Q3
 
