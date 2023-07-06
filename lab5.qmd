@@ -50,7 +50,7 @@ d <- d |> mutate(Pos, mf = if_else(mfval == TRUE, 1, 0))
 fwval <- grepl("FW", d$Pos, fixed = TRUE)
 d <- d |> mutate(Pos, fw = if_else(fwval == TRUE, 1, 0))
 
-d$logs <- log(d$base_salary)
+d <| d$logs <- log(d$base_salary)
 ```
 
 # Comparing Predictive Performance
@@ -59,8 +59,9 @@ d$logs <- log(d$base_salary)
 ```{r q2}
 set.seed(16)
 dim(d)
-mls_cv <- sample(727, (727*.7)) # creates cv set with 70 of data
-mls_test <- sample(727, (727*.3)) # creates test set with other 30
+mls_cv <- data.frame(sample(727, (727*.7))) # creates cv set with 70 of data
+class(mls_cv) # okay now we redo the rest lol
+mls_test <- data.frame(sample(727, (727*.3)) # creates test set with other 30
 ```
 
 ## Q3
@@ -98,24 +99,16 @@ Note 1: We have to do cross-validation by hand because there is no built-in cros
 function in the leaps package (unlike for ridge and Lasso). To do so, remember to first create
 a vector called fold that assigns a fold ID to each observation in mls22_cv (you can use in
 chunk cross-validation in this week’s example code as an example).
+```{r q3-following-instructions-i-think}
 
-```{r q3}
-train <- sample(c(TRUE, FALSE), nrow(d),
-    replace = TRUE)
-val <- (!train)
-
-mls_fit_all <- lm(log(base_salary) ~ usa + gk + df+ mf+fw+Age+MP+Starts+Min+Gls+
-                  Ast+PK+PKatt+CrdY+CrdR+xG+npxG+xAG+PrgC+PrgP+PrgR, d)
-
-
+# sets up model
 regfit_best <- regsubsets(logs ~ usa + gk + df+ mf+fw+Age+MP+Starts+Min+Gls+
                   Ast+PK+PKatt+CrdY+CrdR+xG+npxG+xAG+PrgC+PrgP+PrgR,
-    data = d[train, ], nvmax = 21)
+    data = mls_cv, nvmax = 21)
 
-summary(regfit_best)
+reg_summary <- summary(regfit_best)
+coef(regfit_best, 7)
 
-```
-```{r cross-validation}
 # number of folds
 k <- 10
 n <- nrow(d)
@@ -126,6 +119,7 @@ folds <- sample(rep(1:k, length = n))
 # create container for cross-validation error
 cv_errors <- matrix(NA, k, 21,
     dimnames = list(NULL, paste(1:21)))
+
 ```
 
 ```{r cv-forloop}
@@ -133,11 +127,11 @@ for (j in 1:k) {
   best_fit <- regsubsets(logs ~ usa + gk + df+ mf+fw+Age+MP+Starts+Min+Gls+
                   Ast+PK+PKatt+CrdY+CrdR+xG+npxG+xAG+PrgC+PrgP+PrgR,
        data = d[folds != j, ],
-       nvmax = 19)
-  for (i in 1:19) {
+       nvmax = 21)
+  for (i in 1:21) {
     pred <- predict(best_fit, d[folds == j, ], id = i)
     cv_errors[j, i] <-
-         mean((d$Salary[folds == j] - pred)^2)
+         mean((d$logs[folds == j] - pred)^2)
    }
  }
 ```
@@ -152,19 +146,152 @@ data.frame(vars = 1:length(mean_cv_errors),
   ggplot(aes(x = vars, y = mean_cv_errors)) +
   geom_point() +
   geom_line() +
-  labs(x = "Size of Model (# of Variables",
+  labs(x = "Size of Model (# of Variables)",
        y = "Cross-Validation MSE") +
   theme_bw()
-  
-
 ```
 
 ```{r refit-best}
 reg_best <- regsubsets(logs ~ usa + gk + df+ mf+fw+Age+MP+Starts+Min+Gls+
                   Ast+PK+PKatt+CrdY+CrdR+xG+npxG+xAG+PrgC+PrgP+PrgR, data = d,
     nvmax = 21)
-coef(reg_best, 10)
+coef(reg_best, 7)
 ```
+
+Based on this plot, the optimum number of variables seems to be 7 because this is where the mse is the lowestand seems to taper off from there. These are being from the us, being defender, age, expected goals, being goalkeeper, games played, and minutes played. 
+
+```{r mse-q1}
+val_mat <- model.matrix(logs ~ usa + gk + df+ mf+fw+Age+MP+Starts+Min+Gls+Ast+PK+PKatt+CrdY+CrdR+xG+npxG+xAG+PrgC+PrgP+PrgR, data = d[val, ])
+
+val_errors <- rep(NA, 21)
+for (i in 1:21) {
+ coefi <- coef(regfit_best, id = i)
+ pred <- val_mat[, names(coefi)] %*% coefi
+ val_errors[i] <- mean((d$logs[val] - pred)^2)
+}
+
+val_errors
+which.min(val_errors)
+coef(regfit_best, 7)
+
+get_mse <- function(i){
+ coefi <- coef(regfit_best, id = i)
+ pred <- val_mat[, names(coefi)] %*% coefi
+ val_errors[i] <- mean((d$logs[val] - pred)^2)
+}
+
+val_errors_purrr <- map_dbl(1:21,
+                            get_mse)
+
+cbind(val_errors_purrr, val_errors)
+which.min(val_errors_purrr)
+coef(regfit_best, 7) # here it says the best is 7...?
+
+mean(val_errors_purrr)
+```
+
+
+
+```{r q3-traditional}
+train <- sample(c(TRUE, FALSE), nrow(d),
+    # replace = TRUE)
+val <- (!train)
+# don't want to use these because we set them up above? I think that's what the instructions are saying as opposed to the example code
+#train <- mls_cv
+#val <- mls_test
+mls_fit_all <- lm(log(base_salary) ~ usa + gk + df+ mf+fw+Age+MP+Starts+Min+Gls+
+                  Ast+PK+PKatt+CrdY+CrdR+xG+npxG+xAG+PrgC+PrgP+PrgR, d)
+
+# sets up model
+regfit_best <- regsubsets(logs ~ usa + gk + df+ mf+fw+Age+MP+Starts+Min+Gls+
+                  Ast+PK+PKatt+CrdY+CrdR+xG+npxG+xAG+PrgC+PrgP+PrgR,
+    data = d[train, ], nvmax = 21)
+
+reg_summary <- summary(regfit_best)
+coef(regfit_best, 7)
+
+# number of folds
+k <- 10
+n <- nrow(d)
+# for replicability
+set.seed(17)
+# assign observations to folds
+folds <- sample(rep(1:k, length = n))
+# create container for cross-validation error
+cv_errors <- matrix(NA, k, 21,
+    dimnames = list(NULL, paste(1:21)))
+
+```
+
+```{r cv-forloop}
+for (j in 1:k) {
+  best_fit <- regsubsets(logs ~ usa + gk + df+ mf+fw+Age+MP+Starts+Min+Gls+
+                  Ast+PK+PKatt+CrdY+CrdR+xG+npxG+xAG+PrgC+PrgP+PrgR,
+       data = d[folds != j, ],
+       nvmax = 21)
+  for (i in 1:21) {
+    pred <- predict(best_fit, d[folds == j, ], id = i)
+    cv_errors[j, i] <-
+         mean((d$logs[folds == j] - pred)^2)
+   }
+ }
+```
+
+```{r plot-csv}
+mean_cv_errors <- apply(cv_errors, 2, mean)
+mean_cv_errors
+
+# plot translated to ggplot
+data.frame(vars = 1:length(mean_cv_errors),
+           mean_cv_errors = mean_cv_errors) %>% 
+  ggplot(aes(x = vars, y = mean_cv_errors)) +
+  geom_point() +
+  geom_line() +
+  labs(x = "Size of Model (# of Variables)",
+       y = "Cross-Validation MSE") +
+  theme_bw()
+```
+
+```{r refit-best}
+reg_best <- regsubsets(logs ~ usa + gk + df+ mf+fw+Age+MP+Starts+Min+Gls+
+                  Ast+PK+PKatt+CrdY+CrdR+xG+npxG+xAG+PrgC+PrgP+PrgR, data = d,
+    nvmax = 21)
+coef(reg_best, 7)
+```
+
+Based on this plot, the optimum number of variables seems to be 7 because this is where the mse is the lowestand seems to taper off from there. These are being from the us, being defender, age, expected goals, being goalkeeper, games played, and minutes played. 
+
+```{r mse-q1}
+val_mat <- model.matrix(logs ~ usa + gk + df+ mf+fw+Age+MP+Starts+Min+Gls+Ast+PK+PKatt+CrdY+CrdR+xG+npxG+xAG+PrgC+PrgP+PrgR, data = d[val, ])
+
+val_errors <- rep(NA, 21)
+for (i in 1:21) {
+ coefi <- coef(regfit_best, id = i)
+ pred <- val_mat[, names(coefi)] %*% coefi
+ val_errors[i] <- mean((d$logs[val] - pred)^2)
+}
+
+val_errors
+which.min(val_errors)
+coef(regfit_best, 7)
+
+get_mse <- function(i){
+ coefi <- coef(regfit_best, id = i)
+ pred <- val_mat[, names(coefi)] %*% coefi
+ val_errors[i] <- mean((d$logs[val] - pred)^2)
+}
+
+val_errors_purrr <- map_dbl(1:21,
+                            get_mse)
+
+cbind(val_errors_purrr, val_errors)
+which.min(val_errors_purrr)
+coef(regfit_best, 7) # here it says the best is 7...?
+
+mean(val_errors_purrr)
+```
+The mean mse of the test set is .6363. 
+
 
 ## Q4
 Use cv.glmnet() to do 10-fold cross-validation to find the optimal 𝜆 for ridge regression. Set
@@ -172,7 +299,7 @@ the seed to 18 beforehand. Use a 𝜆 sequence (check the help file for cv.glmne
 out which argument to use) of 10^seq(10, -2, length = 100). Remember that you need
 to create an x matrix and y vector for cv.glmnet(), like in the example code.
 What is the optimal 𝜆? What is the test set MSE?
-```{r q4-mse}
+```{r q4}
 # sets up matrix
 x <- model.matrix(logs ~ usa + gk + df+ mf+fw+Age+MP+Starts+Min+Gls+ Ast+PK+PKatt+CrdY+CrdR+xG+npxG+xAG+PrgC+PrgP+PrgR, d)[, -1]
 y <- d$logs
@@ -202,7 +329,7 @@ ridge_pred <- predict(ridge_mod, s = bestlam,
     newx = x[val, ])
 mean((ridge_pred - y_val)^2)
 ```
-The best l is .0453. The test set MSE is .4669.
+The best lam is .0453. The test set MSE is .4669.
 
 ## Q5
 Use cv.glmnet() to do cross-validation to find the optimal 𝜆 for Lasso regression. Set the
@@ -216,15 +343,16 @@ lasso_mod <- glmnet(x[train, ], y[train], alpha = 1,
 
 # get l
 cv_out_lasso <- cv.glmnet(x[train, ], y[train], alpha = 1)
-bestlam <- cv_out_lasso$lambda.min
-bestlam
+bestlaml <- cv_out_lasso$lambda.min
+bestlaml
 
 # gets MSe
-lasso_pred <- predict(lasso_mod, s = bestlam,
+lasso_pred <- predict(lasso_mod, s = bestlaml,
     newx = x[val, ])
 mean((lasso_pred - y_val)^2)
 ```
-The optimal l is .0120. The test set MSE is .4986. The approach with the lowest test MSE is XXXXX
+The optimal l is .0120. The test set MSE is .4986. The approach with the lowest test MSE is from ridge regression. 
+
 # Comparing Variable Selection Approaches
 
 ## Q6
@@ -232,29 +360,32 @@ Based on the optimal Lasso model, which player characteristics seem to be import
 predicting 2022 MLS player salaries? Remember to refit the model on the whole data with
 the optimal 𝜆 found in the previous section.
 ```{r q6}
-
-
-
-
+# refits to full data, uses best l to get coefs
+out <- glmnet(x, y, alpha = 1, lambda = grid)
+lasso_coef <- predict(out, type = 'coefficient', s = bestlaml)
+lasso_coef
 ```
+The characteristics that seem to be important with the lasso model are being from the us, being a goalkeeper, defender, or forward, as well as age, num games played, minutes played (but barely), penalty kicks attempted (barely), yellow cards, red cards, expected goals, nonpenalty expected goals, and progressive passes by the player. 
+
 ## Q7
 Based on the optimal best subsets model, which player characteristics seem to be important
 for predicting 2022 MLS player salaries? Remember to refit the model on the whole data with
 the optimal number of variables found in the previous section.
-```{q3}
-
-
-
-
+```{r q3}
+reg_best_full <- regsubsets(logs ~ usa + gk + df+ mf+fw+Age+MP+Starts+Min+Gls+
+                  Ast+PK+PKatt+CrdY+CrdR+xG+npxG+xAG+PrgC+PrgP+PrgR, data = d,
+    nvmax = 21)
+coef(reg_best, 7)
 ```
+The characteristics that seem most important are being from the us, being goalkeeper, being
+defender, age, games played, minutes played, and expected goals. 
 
 ## Q8
 Compare the variables selected by Lasso and by best subsets approach. Are they the same?
 Different? Does this match what you would expect, based on what you know about soccer
 and salaries (which doesn’t have to be a lot, don’t worry!).
-```{q3}
 
-
-
-
-```
+They are mostly the same, with lasso having a few more. I think the best subsets
+was mostly what I would think of in general, like age and expected goals, 
+while the lasso got into more details that might be something that 
+someone who knows more about soccer may expect to influence pay. 
