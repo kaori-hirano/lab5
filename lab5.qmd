@@ -11,11 +11,10 @@ format: pdf
 # load packages here
 library(ISLR2)
 library(leaps) # for best subset selection
-library(glmnet) # for ridge, LASSO, and elastic net
+suppressPackageStartupMessages(library(glmnet)) # for ridge, LASSO, and elastic net
 suppressPackageStartupMessages(library(tidyverse))
 suppressPackageStartupMessages(library(readr))
 library(patchwork) # for plot arrangement
-suppressPackageStartupMessages(library(pls)) # for principal component regression and partial least squares
 ```
 
 # Data  
@@ -30,7 +29,7 @@ d <- mls22 |> drop_na()
 
 ## Q1 
 
-```{r chunk-name-here}
+```{r data-wrangling}
 d <- d |>mutate(Nation, usa = if_else(Nation == "USA", 1, 0)) # 0 for non us, 1 for us
 
 # 1 for gk, else 0
@@ -50,21 +49,20 @@ d <- d |> mutate(Pos, mf = if_else(mfval == TRUE, 1, 0))
 fwval <- grepl("FW", d$Pos, fixed = TRUE)
 d <- d |> mutate(Pos, fw = if_else(fwval == TRUE, 1, 0))
 
+# makes log of salary for model
 d$logs <- log(d$base_salary)
 ```
 
 # Comparing Predictive Performance
 
 ## Q2
-```{r q2}
+```{r q2-set-up}
 set.seed(16)
+# splits data into training and val
 dim(d)
 mls_cv <- data.frame(sample(727, (727*.7))) # creates cv set with 70 of data
-class(mls_cv) 
-head(mls_cv)
 mls_test <- data.frame(sample(727, (727*.3))) # creates test set with other 30
 ```
-
 
 ## Q3
 
@@ -73,6 +71,7 @@ predict.regsubsets <- function(object, newdata, id, ...) {
 if(is.symbol(object$call[[2]])){
 i <- 2
 evals_form <- function(x){
+  # sets up predict method
 !rlang::is_formula(eval(x), scoped = TRUE)
 }
 pos_evals_form <- possibly(evals_form, otherwise = FALSE)
@@ -90,34 +89,29 @@ mat[, xvars] %*% coefj
 }
 ```
 
-Use best subsets with cross-validation (like in the example code for this week) to find the best
-subset of variables from the ones use in the previous section. Plot the CV MSE against the size
-of the model. For cross-validation use 10 folds; set the seed to 17 before doing fold assignment.
-What does the optimum number of variables seem to be?
-Then calculate the test set MSE (using mls22_test). You can do this using a for loop or
-using a more efficient method.
-Note 1: We have to do cross-validation by hand because there is no built-in cross-validation
-function in the leaps package (unlike for ridge and Lasso). To do so, remember to first create
-a vector called fold that assigns a fold ID to each observation in mls22_cv (you can use in
-chunk cross-validation in this week’s example code as an example).
 ```{r q3-regfit}
 # sets up model
-set.seed(17)
+set.seed(16)
 train <- sample(c(TRUE, FALSE), nrow(d),
      replace = TRUE, prob=c(.7,.3))
 test <- (!train)
-model <- lm(logs ~ usa + gk + df+ mf+fw+Age+MP+Starts+Min+Gls+ Ast+PK+PKatt+CrdY+CrdR+xG+npxG+xAG+PrgC+PrgP+PrgR,
-    data = d[train, ])
+val <- test
+model <- lm(logs ~ usa + gk + df+ mf+fw+Age+MP+Starts+Min+Gls+ 
+              Ast+PK+PKatt+CrdY+CrdR+xG+npxG+xAG+PrgC+PrgP+PrgR,
+            data = d[train, ])
 
 # gets prediction 
 regfit_best <- regsubsets(logs ~ usa + gk + df+ mf+fw+Age+MP+Starts+Min+Gls+
-                  Ast+PK+PKatt+CrdY+CrdR+xG+npxG+xAG+PrgC+PrgP+PrgR, d[train,], nvmax = 21)
+                            Ast+PK+PKatt+CrdY+CrdR+xG+npxG+xAG+PrgC+PrgP+PrgR, 
+                          d[train,], nvmax = 21)
 reg_summary <- summary(regfit_best)
 coef(regfit_best,9)
 #set.seed(17)
 mls_cv <- data.frame(sample(727, (727*.7))) # creates cv set with 70 of data
 mls_test <- data.frame(sample(727, (727*.3))) # creates test set with other 30
-#model <- lm(log(base_salary) ~ usa + gk + df+ mf+fw+Age+MP+Starts+Min+Gls+ Ast+PK+PKatt+CrdY+CrdR+xG+npxG+xAG+PrgC+PrgP+PrgR,    data = mls_cv)
+#model <- lm(log(base_salary) ~ usa + gk + df+ mf+fw+Age+MP+Starts+Min+Gls+
+#Ast+PK+PKatt+CrdY+CrdR+xG+npxG+xAG+PrgC+PrgP+PrgR, 
+#data = mls_cv)
 #regfit_best <- predict.regsubsets(model, mls_cv, nvmax = 21)
 
 #reg_summary <- summary(regfit_best)
@@ -170,10 +164,20 @@ data.frame(vars = 1:length(mean_cv_errors),
 ```
 
 ```{r refit-best}
+# sets up best subsets on all
 reg_best <- regsubsets(logs ~ usa + gk + df+ mf+fw+Age+MP+Starts+Min+Gls+
                   Ast+PK+PKatt+CrdY+CrdR+xG+npxG+xAG+PrgC+PrgP+PrgR, data = d,
     nvmax = 21)
+# prints the best, num determined by graph above
 coef(reg_best, 9)
+
+# I was confused by the slack question/answer chain, so I'm 
+# also including only the best predictors as well just in case
+# I misinterpreted the question
+reg_best_only <- regsubsets(logs ~ usa + gk + df+ Age+MP+Starts+Min+xG+xAG, 
+                            data = d[val,],
+    nvmax = 9)
+coef(reg_best_only, 9)
 ```
 
 Based on this plot, the optimum number of variables seems to be 9 because this is where the mse is the lowest and seems to go up then taper off from there. These are being from the us, being defender, age, expected goals, being goalkeeper, games played, starts, xAG, and minutes played. 
@@ -191,7 +195,7 @@ for (i in 1:21) {
 
 mean(val_errors)
 which.min(val_errors)
-coef(regfit_best, 16)
+coef(regfit_best, 14)
 
 # gets mse using function
 get_mse <- function(i){
@@ -211,20 +215,18 @@ coef(regfit_best, 14) # here it says the best is 14, which is
 # prints mse
 mean(val_errors_purrr)
 ```
-From the test set, the MSE is .6202 
+From the test set, the MSE is .5287. 
 
 
 ## Q4
-Use cv.glmnet() to do 10-fold cross-validation to find the optimal 𝜆 for ridge regression. Set
-the seed to 18 beforehand. Use a 𝜆 sequence (check the help file for cv.glmnet() to figure
-out which argument to use) of 10^seq(10, -2, length = 100). Remember that you need
-to create an x matrix and y vector for cv.glmnet(), like in the example code.
-What is the optimal 𝜆? What is the test set MSE?
+
 ```{r q4}
 set.seed(18)
 
 # sets up matrix
-x <- model.matrix(logs ~ usa + gk + df+ mf+fw+Age+MP+Starts+Min+Gls+ Ast+PK+PKatt+CrdY+CrdR+xG+npxG+xAG+PrgC+PrgP+PrgR, d)[, -1]
+x <- model.matrix(logs ~ usa + gk + df+ mf+fw+Age+MP+Starts+Min+Gls+
+                    Ast+PK+PKatt+CrdY+CrdR+xG+npxG+xAG+PrgC+PrgP+PrgR, 
+                  d)[, -1]
 y <- d$logs
 
 # fits ridge 
@@ -254,10 +256,7 @@ mean((ridge_pred - y_val)^2)
 The best lam is .0533. The test set MSE is .5834.
 
 ## Q5
-Use cv.glmnet() to do cross-validation to find the optimal 𝜆 for Lasso regression. Set the
-seed to 18 beforehand. Use all the same parameter as in Q4.
-What is the optimal 𝜆? What is the test set MSE? Which of the three approaches has the
-lowest test MSE
+
 ```{r cv-lasso}
 set.seed(18)
 lasso_mod <- glmnet(x[train, ], y[train], alpha = 1,
@@ -273,14 +272,12 @@ lasso_pred <- predict(lasso_mod, s = bestlaml,
     newx = x[val, ])
 mean((lasso_pred - y_val)^2)
 ```
-The optimal l is .0010. The test set MSE is .6344. The approach with the lowest test MSE is from ridge regression.  
+The optimal l is .0010. The test set MSE is .6344. The approach with the lowest test MSE is from best subset  
 
 # Comparing Variable Selection Approaches
 
 ## Q6
-Based on the optimal Lasso model, which player characteristics seem to be important for
-predicting 2022 MLS player salaries? Remember to refit the model on the whole data with
-the optimal 𝜆 found in the previous section.
+
 ```{r q6}
 # refits to full data, uses best l to get coefs
 out <- glmnet(x, y, alpha = 1, lambda = grid)
@@ -290,19 +287,16 @@ lasso_coef
 The characteristics that seem to be important with the lasso model are being from the us, being a goalkeeper, defender, or forward, as well as age, num games played, minutes played (but barely), penalty kicks attempted (barely), yellow cards, red cards, expected goals, nonpenalty expected goals, and progressive passes by the player. 
 
 ## Q7
-Based on the optimal best subsets model, which player characteristics seem to be important
-for predicting 2022 MLS player salaries? Remember to refit the model on the whole data with
-the optimal number of variables found in the previous section.
-```{r q3}
+
+```{r q7}
 # gets best subsets for 9, which was what the determined best number was
 reg_best_full <- regsubsets(logs ~ usa + gk + df+ mf+fw+Age+MP+Starts+Min+Gls+
                   Ast+PK+PKatt+CrdY+CrdR+xG+npxG+xAG+PrgC+PrgP+PrgR, data = d,
     nvmax = 9)
 
-# gets full best subsets to check
-reg_best_full1 <- regsubsets(logs ~ usa + gk + df+ mf+fw+Age+MP+Starts+Min+Gls+
-                  Ast+PK+PKatt+CrdY+CrdR+xG+npxG+xAG+PrgC+PrgP+PrgR, data = d,
-    nvmax = 21)
+# gets reduced best subsets using only the suggested number
+reg_best_full1 <- regsubsets(logs ~ usa + gk + df+ Age+MP+Starts+Min+xG+xAG, data = d,
+    nvmax = 9)
 
 # checks that they are same and displays important characteristics
 cbind(coef(reg_best_full1, 9), coef(reg_best_full, 9))
@@ -312,9 +306,6 @@ The characteristics that seem most important are being from the us, being goalke
 defender, age, games played, minutes played, starts, expected non-penalty and overall goals. 
 
 ## Q8
-Compare the variables selected by Lasso and by best subsets approach. Are they the same?
-Different? Does this match what you would expect, based on what you know about soccer
-and salaries (which doesn’t have to be a lot, don’t worry!).
 
 They are mostly the same, with lasso having a few more important characteristics. I think the best subsets
 was mostly what I would think of in general with my limited soccer knowledge, like age and expected goals, 
