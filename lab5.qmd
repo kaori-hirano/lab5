@@ -178,7 +178,8 @@ coef(reg_best, 9)
 
 Based on this plot, the optimum number of variables seems to be 9 because this is where the mse is the lowest and seems to go up then taper off from there. These are being from the us, being defender, age, expected goals, being goalkeeper, games played, starts, xAG, and minutes played. 
 
-```{r mse-q1}
+```{r mse-q3}
+# calculates mse for q3
 val_mat <- model.matrix(model, data = d[val, ])
 
 val_errors <- rep(NA, 21)
@@ -192,6 +193,7 @@ mean(val_errors)
 which.min(val_errors)
 coef(regfit_best, 16)
 
+# gets mse using function
 get_mse <- function(i){
  coefi <- coef(regfit_best, id = i)
  pred <- val_mat[, names(coefi)] %*% coefi
@@ -201,14 +203,15 @@ get_mse <- function(i){
 val_errors_purrr <- map_dbl(1:21,
                             get_mse)
 
-cbind(val_errors_purrr, val_errors)
+#cbind(val_errors_purrr, val_errors)
 which.min(val_errors_purrr)
 coef(regfit_best, 14) # here it says the best is 14, which is 
 # about the same visually as 9 so that makes sense
 
+# prints mse
 mean(val_errors_purrr)
 ```
-From the test set, the MSE is .5471. 
+From the test set, the MSE is .6202 
 
 
 ## Q4
@@ -270,7 +273,7 @@ lasso_pred <- predict(lasso_mod, s = bestlaml,
     newx = x[val, ])
 mean((lasso_pred - y_val)^2)
 ```
-The optimal l is .0120. The test set MSE is .4986. The approach with the lowest test MSE is from ridge regression. 
+The optimal l is .0010. The test set MSE is .6344. The approach with the lowest test MSE is from ridge regression.  
 
 # Comparing Variable Selection Approaches
 
@@ -291,20 +294,29 @@ Based on the optimal best subsets model, which player characteristics seem to be
 for predicting 2022 MLS player salaries? Remember to refit the model on the whole data with
 the optimal number of variables found in the previous section.
 ```{r q3}
+# gets best subsets for 9, which was what the determined best number was
 reg_best_full <- regsubsets(logs ~ usa + gk + df+ mf+fw+Age+MP+Starts+Min+Gls+
                   Ast+PK+PKatt+CrdY+CrdR+xG+npxG+xAG+PrgC+PrgP+PrgR, data = d,
+    nvmax = 9)
+
+# gets full best subsets to check
+reg_best_full1 <- regsubsets(logs ~ usa + gk + df+ mf+fw+Age+MP+Starts+Min+Gls+
+                  Ast+PK+PKatt+CrdY+CrdR+xG+npxG+xAG+PrgC+PrgP+PrgR, data = d,
     nvmax = 21)
-coef(reg_best, 7)
+
+# checks that they are same and displays important characteristics
+cbind(coef(reg_best_full1, 9), coef(reg_best_full, 9))
+
 ```
 The characteristics that seem most important are being from the us, being goalkeeper, being
-defender, age, games played, minutes played, and expected goals. 
+defender, age, games played, minutes played, starts, expected non-penalty and overall goals. 
 
 ## Q8
 Compare the variables selected by Lasso and by best subsets approach. Are they the same?
 Different? Does this match what you would expect, based on what you know about soccer
 and salaries (which doesn’t have to be a lot, don’t worry!).
 
-They are mostly the same, with lasso having a few more. I think the best subsets
-was mostly what I would think of in general, like age and expected goals, 
+They are mostly the same, with lasso having a few more important characteristics. I think the best subsets
+was mostly what I would think of in general with my limited soccer knowledge, like age and expected goals, 
 while the lasso got into more details that might be something that 
-someone who knows more about soccer may expect to influence pay. 
+someone who knows more about soccer may expect to influence pay, such as yellow cards and red cards. Overall, what I expected to be included was mostly included and the two models have overlap in what is selected. 
