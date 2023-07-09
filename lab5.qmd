@@ -50,7 +50,7 @@ d <- d |> mutate(Pos, mf = if_else(mfval == TRUE, 1, 0))
 fwval <- grepl("FW", d$Pos, fixed = TRUE)
 d <- d |> mutate(Pos, fw = if_else(fwval == TRUE, 1, 0))
 
-d <| d$logs <- log(d$base_salary)
+d$logs <- log(d$base_salary)
 ```
 
 # Comparing Predictive Performance
@@ -60,32 +60,33 @@ d <| d$logs <- log(d$base_salary)
 set.seed(16)
 dim(d)
 mls_cv <- data.frame(sample(727, (727*.7))) # creates cv set with 70 of data
-class(mls_cv) # okay now we redo the rest lol
-mls_test <- data.frame(sample(727, (727*.3)) # creates test set with other 30
+class(mls_cv) 
+head(mls_cv)
+mls_test <- data.frame(sample(727, (727*.3))) # creates test set with other 30
 ```
+
 
 ## Q3
 
 ```{r predict-method}
 predict.regsubsets <- function(object, newdata, id, ...) {
-  
-   if(is.symbol(object$call[[2]])){
-     i <- 2
-     evals_form <- function(x){
-       !rlang::is_formula(eval(x), scoped = TRUE)
-     }
-     pos_evals_form <- possibly(evals_form, otherwise = FALSE)
-     while(pos_evals_form(object$call[[i]])){
-      i <- i + 1 
-     }
-     tt <- eval(object$call[[i]])
-   } else {
-     tt <- as.formula(object$call[[2]])
-   }
-   mat <- model.matrix(tt, newdata)
-   coefj <- coef(object, id = id)
-   xvars <- names(coefj)
-   mat[, xvars] %*% coefj
+if(is.symbol(object$call[[2]])){
+i <- 2
+evals_form <- function(x){
+!rlang::is_formula(eval(x), scoped = TRUE)
+}
+pos_evals_form <- possibly(evals_form, otherwise = FALSE)
+while(pos_evals_form(object$call[[i]])){
+i <- i + 1
+}
+tt <- eval(object$call[[i]])
+} else {
+tt <- as.formula(object$call[[2]])
+}
+mat <- model.matrix(tt, newdata)
+coefj <- coef(object, id = id)
+xvars <- names(coefj)
+mat[, xvars] %*% coefj
 }
 ```
 
@@ -99,117 +100,32 @@ Note 1: We have to do cross-validation by hand because there is no built-in cros
 function in the leaps package (unlike for ridge and Lasso). To do so, remember to first create
 a vector called fold that assigns a fold ID to each observation in mls22_cv (you can use in
 chunk cross-validation in this week’s example code as an example).
-```{r q3-following-instructions-i-think}
-
+```{r q3-regfit}
 # sets up model
-regfit_best <- regsubsets(logs ~ usa + gk + df+ mf+fw+Age+MP+Starts+Min+Gls+
-                  Ast+PK+PKatt+CrdY+CrdR+xG+npxG+xAG+PrgC+PrgP+PrgR,
-    data = mls_cv, nvmax = 21)
-
-reg_summary <- summary(regfit_best)
-coef(regfit_best, 7)
-
-# number of folds
-k <- 10
-n <- nrow(d)
-# for replicability
 set.seed(17)
-# assign observations to folds
-folds <- sample(rep(1:k, length = n))
-# create container for cross-validation error
-cv_errors <- matrix(NA, k, 21,
-    dimnames = list(NULL, paste(1:21)))
-
-```
-
-```{r cv-forloop}
-for (j in 1:k) {
-  best_fit <- regsubsets(logs ~ usa + gk + df+ mf+fw+Age+MP+Starts+Min+Gls+
-                  Ast+PK+PKatt+CrdY+CrdR+xG+npxG+xAG+PrgC+PrgP+PrgR,
-       data = d[folds != j, ],
-       nvmax = 21)
-  for (i in 1:21) {
-    pred <- predict(best_fit, d[folds == j, ], id = i)
-    cv_errors[j, i] <-
-         mean((d$logs[folds == j] - pred)^2)
-   }
- }
-```
-
-```{r plot-csv}
-mean_cv_errors <- apply(cv_errors, 2, mean)
-mean_cv_errors
-
-# plot translated to ggplot
-data.frame(vars = 1:length(mean_cv_errors),
-           mean_cv_errors = mean_cv_errors) %>% 
-  ggplot(aes(x = vars, y = mean_cv_errors)) +
-  geom_point() +
-  geom_line() +
-  labs(x = "Size of Model (# of Variables)",
-       y = "Cross-Validation MSE") +
-  theme_bw()
-```
-
-```{r refit-best}
-reg_best <- regsubsets(logs ~ usa + gk + df+ mf+fw+Age+MP+Starts+Min+Gls+
-                  Ast+PK+PKatt+CrdY+CrdR+xG+npxG+xAG+PrgC+PrgP+PrgR, data = d,
-    nvmax = 21)
-coef(reg_best, 7)
-```
-
-Based on this plot, the optimum number of variables seems to be 7 because this is where the mse is the lowestand seems to taper off from there. These are being from the us, being defender, age, expected goals, being goalkeeper, games played, and minutes played. 
-
-```{r mse-q1}
-val_mat <- model.matrix(logs ~ usa + gk + df+ mf+fw+Age+MP+Starts+Min+Gls+Ast+PK+PKatt+CrdY+CrdR+xG+npxG+xAG+PrgC+PrgP+PrgR, data = d[val, ])
-
-val_errors <- rep(NA, 21)
-for (i in 1:21) {
- coefi <- coef(regfit_best, id = i)
- pred <- val_mat[, names(coefi)] %*% coefi
- val_errors[i] <- mean((d$logs[val] - pred)^2)
-}
-
-val_errors
-which.min(val_errors)
-coef(regfit_best, 7)
-
-get_mse <- function(i){
- coefi <- coef(regfit_best, id = i)
- pred <- val_mat[, names(coefi)] %*% coefi
- val_errors[i] <- mean((d$logs[val] - pred)^2)
-}
-
-val_errors_purrr <- map_dbl(1:21,
-                            get_mse)
-
-cbind(val_errors_purrr, val_errors)
-which.min(val_errors_purrr)
-coef(regfit_best, 7) # here it says the best is 7...?
-
-mean(val_errors_purrr)
-```
-
-
-
-```{r q3-traditional}
 train <- sample(c(TRUE, FALSE), nrow(d),
-    # replace = TRUE)
-val <- (!train)
-# don't want to use these because we set them up above? I think that's what the instructions are saying as opposed to the example code
-#train <- mls_cv
-#val <- mls_test
-mls_fit_all <- lm(log(base_salary) ~ usa + gk + df+ mf+fw+Age+MP+Starts+Min+Gls+
-                  Ast+PK+PKatt+CrdY+CrdR+xG+npxG+xAG+PrgC+PrgP+PrgR, d)
+     replace = TRUE, prob=c(.7,.3))
+test <- (!train)
+model <- lm(logs ~ usa + gk + df+ mf+fw+Age+MP+Starts+Min+Gls+ Ast+PK+PKatt+CrdY+CrdR+xG+npxG+xAG+PrgC+PrgP+PrgR,
+    data = d[train, ])
 
-# sets up model
+# gets prediction 
 regfit_best <- regsubsets(logs ~ usa + gk + df+ mf+fw+Age+MP+Starts+Min+Gls+
-                  Ast+PK+PKatt+CrdY+CrdR+xG+npxG+xAG+PrgC+PrgP+PrgR,
-    data = d[train, ], nvmax = 21)
-
+                  Ast+PK+PKatt+CrdY+CrdR+xG+npxG+xAG+PrgC+PrgP+PrgR, d[train,], nvmax = 21)
 reg_summary <- summary(regfit_best)
-coef(regfit_best, 7)
+coef(regfit_best,9)
+#set.seed(17)
+mls_cv <- data.frame(sample(727, (727*.7))) # creates cv set with 70 of data
+mls_test <- data.frame(sample(727, (727*.3))) # creates test set with other 30
+#model <- lm(log(base_salary) ~ usa + gk + df+ mf+fw+Age+MP+Starts+Min+Gls+ Ast+PK+PKatt+CrdY+CrdR+xG+npxG+xAG+PrgC+PrgP+PrgR,    data = mls_cv)
+#regfit_best <- predict.regsubsets(model, mls_cv, nvmax = 21)
 
+#reg_summary <- summary(regfit_best)
+#coef(regfit_best, 7)
+```
+
+```{r q3-cv}
+# sets up cross validation
 # number of folds
 k <- 10
 n <- nrow(d)
@@ -220,10 +136,10 @@ folds <- sample(rep(1:k, length = n))
 # create container for cross-validation error
 cv_errors <- matrix(NA, k, 21,
     dimnames = list(NULL, paste(1:21)))
-
 ```
 
 ```{r cv-forloop}
+# for loop for cross validation
 for (j in 1:k) {
   best_fit <- regsubsets(logs ~ usa + gk + df+ mf+fw+Age+MP+Starts+Min+Gls+
                   Ast+PK+PKatt+CrdY+CrdR+xG+npxG+xAG+PrgC+PrgP+PrgR,
@@ -238,6 +154,7 @@ for (j in 1:k) {
 ```
 
 ```{r plot-csv}
+# plots the cv mse
 mean_cv_errors <- apply(cv_errors, 2, mean)
 mean_cv_errors
 
@@ -256,13 +173,13 @@ data.frame(vars = 1:length(mean_cv_errors),
 reg_best <- regsubsets(logs ~ usa + gk + df+ mf+fw+Age+MP+Starts+Min+Gls+
                   Ast+PK+PKatt+CrdY+CrdR+xG+npxG+xAG+PrgC+PrgP+PrgR, data = d,
     nvmax = 21)
-coef(reg_best, 7)
+coef(reg_best, 9)
 ```
 
-Based on this plot, the optimum number of variables seems to be 7 because this is where the mse is the lowestand seems to taper off from there. These are being from the us, being defender, age, expected goals, being goalkeeper, games played, and minutes played. 
+Based on this plot, the optimum number of variables seems to be 9 because this is where the mse is the lowest and seems to go up then taper off from there. These are being from the us, being defender, age, expected goals, being goalkeeper, games played, starts, xAG, and minutes played. 
 
 ```{r mse-q1}
-val_mat <- model.matrix(logs ~ usa + gk + df+ mf+fw+Age+MP+Starts+Min+Gls+Ast+PK+PKatt+CrdY+CrdR+xG+npxG+xAG+PrgC+PrgP+PrgR, data = d[val, ])
+val_mat <- model.matrix(model, data = d[val, ])
 
 val_errors <- rep(NA, 21)
 for (i in 1:21) {
@@ -271,9 +188,9 @@ for (i in 1:21) {
  val_errors[i] <- mean((d$logs[val] - pred)^2)
 }
 
-val_errors
+mean(val_errors)
 which.min(val_errors)
-coef(regfit_best, 7)
+coef(regfit_best, 16)
 
 get_mse <- function(i){
  coefi <- coef(regfit_best, id = i)
@@ -286,11 +203,12 @@ val_errors_purrr <- map_dbl(1:21,
 
 cbind(val_errors_purrr, val_errors)
 which.min(val_errors_purrr)
-coef(regfit_best, 7) # here it says the best is 7...?
+coef(regfit_best, 14) # here it says the best is 14, which is 
+# about the same visually as 9 so that makes sense
 
 mean(val_errors_purrr)
 ```
-The mean mse of the test set is .6363. 
+From the test set, the MSE is .5471. 
 
 
 ## Q4
@@ -300,6 +218,8 @@ out which argument to use) of 10^seq(10, -2, length = 100). Remember that you ne
 to create an x matrix and y vector for cv.glmnet(), like in the example code.
 What is the optimal 𝜆? What is the test set MSE?
 ```{r q4}
+set.seed(18)
+
 # sets up matrix
 x <- model.matrix(logs ~ usa + gk + df+ mf+fw+Age+MP+Starts+Min+Gls+ Ast+PK+PKatt+CrdY+CrdR+xG+npxG+xAG+PrgC+PrgP+PrgR, d)[, -1]
 y <- d$logs
@@ -308,7 +228,6 @@ y <- d$logs
 grid <- 10^seq(10, -2, length = 100)
 ridge_mod <- cv.glmnet(x, y, alpha = 0, lambda = grid)
 
-set.seed(18)
 train <- sample(1:nrow(x), nrow(x) / 2)
 val <- (-train)
 y_val <- y[val]
@@ -329,7 +248,7 @@ ridge_pred <- predict(ridge_mod, s = bestlam,
     newx = x[val, ])
 mean((ridge_pred - y_val)^2)
 ```
-The best lam is .0453. The test set MSE is .4669.
+The best lam is .0533. The test set MSE is .5834.
 
 ## Q5
 Use cv.glmnet() to do cross-validation to find the optimal 𝜆 for Lasso regression. Set the
